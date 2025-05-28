@@ -25,7 +25,7 @@ CMD_ENCODING = 'cp949'
 class SystemUtilityApp:
     def __init__(self, master):
         self.master = master
-        master.title("시스템 유틸리티 (최종 완성본)")
+        master.title("윈도우 네트워크, 라이선스 마법사 (충북대학교병원 Pc기술지원팀)")
         master.geometry("500x700")
 
         self.notebook = ttk.Notebook(master, padding=10)
