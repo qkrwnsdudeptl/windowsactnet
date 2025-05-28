@@ -50,7 +50,6 @@ class SystemUtilityApp:
     def log(self, message):
         self.log_area.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n"); self.log_area.see(tk.END)
     
-    # === 이 부분이 수정되었습니다: 종료 시 파일 삭제 기능 복원 ===
     def cleanup_and_exit(self):
         if messagebox.askyesno("종료 확인", "프로그램을 종료하시겠습니까?\n(`backup_settings.txt` 파일이 삭제됩니다.)"):
             try:
@@ -117,7 +116,6 @@ class SystemUtilityApp:
             return None
         except Exception: return None
 
-    # === 이 함수만 복사해서 기존 코드를 덮어쓰세요 ===
     def backup_current_settings(self):
         self.interface_name = self.get_netsh_compatible_name()
         if not self.interface_name:
@@ -127,39 +125,22 @@ class SystemUtilityApp:
         output = self.run_command(f'netsh interface ipv4 show config name="{self.interface_name}"')
         if not output: messagebox.showerror("오류", "설정 정보를 가져오는 데 실패했습니다."); return
         
-        self.log("설정 정보 분석을 시작합니다...")
         settings = {}
-        
-        # IP, 게이트웨이, DNS 정규식 (점과 공백 모두 처리)
         ip_match = re.search(r"(?:IP 주소|IP Address)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
+        subnet_match = re.search(r"(?:서브넷 마스크|Subnet Mask)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
         gateway_match = re.search(r"(?:기본 게이트웨이|Default Gateway)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
         dns_matches = re.findall(r"(?:DNS 서버|DNS Server)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
         dhcp_match = re.search(r"(?:DHCP 사용|DHCP Enabled)[\s.]*:\s*(.+)", output, re.IGNORECASE)
-
-        # 서브넷 마스크를 위한 2중 탐색 로직 (원본 코드 + 강화된 코드)
-        subnet_val = None
-        # 1. 원본 코드의 '서브넷 접두사' 방식 먼저 시도
-        subnet_prefix_match = re.search(r"(?:서브넷 접두사|Subnet Prefix).*\(.*(?:마스크|Mask)\s+([0-9.]+)\)", output, re.IGNORECASE)
-        if subnet_prefix_match:
-            subnet_val = subnet_prefix_match.group(1).strip()
-        else:
-            # 2. 실패 시, 점과 공백을 모두 처리하는 방식으로 '서브넷 마스크' 탐색
-            subnet_mask_match = re.search(r"(?:서브넷 마스크|Subnet Mask)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
-            if subnet_mask_match:
-                subnet_val = subnet_mask_match.group(1).strip()
-
+        
         settings['ip'] = ip_match.group(1).strip() if ip_match else None
-        settings['subnet'] = subnet_val
+        settings['subnet'] = subnet_match.group(1).strip() if subnet_match else None
         settings['gateway'] = gateway_match.group(1).strip() if gateway_match else None
         settings['dns'] = [dns.strip() for dns in dns_matches] if dns_matches else []
         settings['dhcp_enabled'] = dhcp_match and dhcp_match.group(1).strip().lower() in ['yes', '예']
 
         self.original_settings = settings
-        
-        self.ip_var.set(settings.get('ip') or 'N/A')
-        self.subnet_var.set(settings.get('subnet') or 'N/A')
-        self.gateway_var.set(settings.get('gateway') or 'N/A')
-        self.dns_var.set(", ".join(settings['dns']) if settings['dns'] else 'N/A')
+        self.ip_var.set(settings.get('ip') or 'N/A'); self.subnet_var.set(settings.get('subnet') or 'N/A')
+        self.gateway_var.set(settings.get('gateway') or 'N/A'); self.dns_var.set(", ".join(settings['dns']) if settings['dns'] else 'N/A')
         
         if not all([settings.get('ip'), settings.get('subnet')]):
              self.log(f"오류: IP({settings.get('ip')}) 또는 서브넷({settings.get('subnet')})을 읽지 못했습니다."); 
@@ -168,9 +149,8 @@ class SystemUtilityApp:
         try:
             with open("backup_settings.txt", "w", encoding="utf-8") as f:
                 f.write(f"# {self.interface_name} 설정 백업 ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
-                f.write(f"dhcp_enabled={settings.get('dhcp_enabled', 'N/A')}\n")
-                f.write(f"ip={settings.get('ip', 'N/A')}\n")
-                f.write(f"subnet={settings.get('subnet', 'N/A')}\n")
+                f.write(f"dhcp_enabled={settings.get('dhcp_enabled', False)}\n")
+                f.write(f"ip={settings.get('ip', 'N/A')}\n"); f.write(f"subnet={settings.get('subnet', 'N/A')}\n")
                 f.write(f"gateway={settings.get('gateway', 'N/A')}\n")
                 dns_list = settings.get('dns', [])
                 if dns_list:
@@ -183,10 +163,58 @@ class SystemUtilityApp:
         self.btn_restore.config(state=tk.NORMAL)
         messagebox.showinfo("성공", "현재 네트워크 설정을 성공적으로 백업했습니다.")
     
-    def apply_from_config_file(self): # (생략)
-        pass
-    def restore_original_settings(self): # (생략)
-        pass
+    # === 이 함수들의 내용이 복원되었습니다 ===
+    def apply_from_config_file(self):
+        if not self.interface_name:
+            messagebox.showwarning("경고", "먼저 '현재 설정 불러오기' 버튼을 눌러주세요.")
+            return
+        try:
+            with open("config.txt", "r", encoding="utf-8") as f:
+                config = dict(line.strip().split('=', 1) for line in f if '=' in line and not line.strip().startswith('#'))
+        except FileNotFoundError:
+            messagebox.showerror("파일 없음", "`config.txt` 파일을 찾을 수 없습니다.")
+            return
+        
+        ip = config.get("ip"); subnet = config.get("subnet"); gateway = config.get("gateway")
+        dns1 = config.get("dns1"); dns2 = config.get("dns2")
+
+        if not all([ip, subnet, gateway, dns1]):
+            messagebox.showerror("설정 오류", "config.txt의 필수 항목(ip, subnet, gateway, dns1)을 확인하세요.")
+            return
+        
+        self.log("--- 파일에서 설정 적용 시작 ---")
+        self.run_command(f'netsh interface ipv4 set address name="{self.interface_name}" static {ip} {subnet} {gateway}')
+        self.run_command(f'netsh interface ipv4 set dns name="{self.interface_name}" static {dns1}')
+        if dns2: self.run_command(f'netsh interface ipv4 add dns name="{self.interface_name}" {dns2} index=2')
+        self.log("--- 설정 적용 완료 ---")
+        messagebox.showinfo("성공", "파일의 설정으로 네트워크 정보를 변경했습니다.")
+
+    def restore_original_settings(self):
+        if not self.original_settings:
+            messagebox.showerror("오류", "백업된 설정이 없습니다.")
+            return
+        
+        self.log("--- 원래 설정으로 복원 시작 ---")
+        if self.original_settings.get('dhcp_enabled'):
+            self.log("DHCP(자동) 설정으로 복원합니다.")
+            self.run_command(f'netsh interface ipv4 set address name="{self.interface_name}" dhcp')
+            self.run_command(f'netsh interface ipv4 set dns name="{self.interface_name}" dhcp')
+        else:
+            self.log("백업된 고정 IP 설정으로 복원합니다.")
+            ip = self.original_settings.get('ip'); subnet = self.original_settings.get('subnet'); gateway = self.original_settings.get('gateway')
+            self.run_command(f'netsh interface ipv4 set address name="{self.interface_name}" static {ip} {subnet} {gateway}')
+            
+            dns_servers = self.original_settings.get('dns', [])
+            if dns_servers:
+                self.run_command(f'netsh interface ipv4 set dns name="{self.interface_name}" static {dns_servers[0]}')
+                if len(dns_servers) > 1:
+                    for i, dns in enumerate(dns_servers[1:], start=2):
+                        self.run_command(f'netsh interface ipv4 add dns name="{self.interface_name}" {dns} index={i}')
+            else: # 백업된 DNS가 없으면 DHCP로 설정
+                self.run_command(f'netsh interface ipv4 set dns name="{self.interface_name}" dhcp')
+
+        self.log("--- 복원 완료 ---")
+        messagebox.showinfo("성공", "원래의 네트워크 설정으로 복원했습니다.")
 
     # === 2. 윈도우 인증 탭 (복원) ===
     def create_windows_widgets(self, parent_tab):
