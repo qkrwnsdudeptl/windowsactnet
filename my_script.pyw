@@ -117,7 +117,7 @@ class SystemUtilityApp:
             return None
         except Exception: return None
 
-    # === 이 부분이 수정되었습니다: 네트워크 정보 파싱 강화 ===
+    # === 이 함수만 복사해서 기존 코드를 덮어쓰세요 ===
     def backup_current_settings(self):
         self.interface_name = self.get_netsh_compatible_name()
         if not self.interface_name:
@@ -127,16 +127,29 @@ class SystemUtilityApp:
         output = self.run_command(f'netsh interface ipv4 show config name="{self.interface_name}"')
         if not output: messagebox.showerror("오류", "설정 정보를 가져오는 데 실패했습니다."); return
         
+        self.log("설정 정보 분석을 시작합니다...")
         settings = {}
-        # 점(.)과 공백을 모두 처리할 수 있는 정규식으로 수정
-        ip_match = re.search(r"(?:IP 주소|IP Address)[ .]*:\s*([0-9.]+)", output, re.IGNORECASE)
-        subnet_match = re.search(r"(?:서브넷 마스크|Subnet Mask)[ .]*:\s*([0-9.]+)", output, re.IGNORECASE)
-        gateway_match = re.search(r"(?:기본 게이트웨이|Default Gateway)[ .]*:\s*([0-9.]+)", output, re.IGNORECASE)
-        dns_matches = re.findall(r"(?:DNS 서버|DNS Server)[ .]*:\s*([0-9.]+)", output, re.IGNORECASE)
-        dhcp_match = re.search(r"(?:DHCP 사용|DHCP Enabled)[ .]*:\s*(.+)", output, re.IGNORECASE)
         
+        # IP, 게이트웨이, DNS 정규식 (점과 공백 모두 처리)
+        ip_match = re.search(r"(?:IP 주소|IP Address)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
+        gateway_match = re.search(r"(?:기본 게이트웨이|Default Gateway)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
+        dns_matches = re.findall(r"(?:DNS 서버|DNS Server)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
+        dhcp_match = re.search(r"(?:DHCP 사용|DHCP Enabled)[\s.]*:\s*(.+)", output, re.IGNORECASE)
+
+        # 서브넷 마스크를 위한 2중 탐색 로직 (원본 코드 + 강화된 코드)
+        subnet_val = None
+        # 1. 원본 코드의 '서브넷 접두사' 방식 먼저 시도
+        subnet_prefix_match = re.search(r"(?:서브넷 접두사|Subnet Prefix).*\(.*(?:마스크|Mask)\s+([0-9.]+)\)", output, re.IGNORECASE)
+        if subnet_prefix_match:
+            subnet_val = subnet_prefix_match.group(1).strip()
+        else:
+            # 2. 실패 시, 점과 공백을 모두 처리하는 방식으로 '서브넷 마스크' 탐색
+            subnet_mask_match = re.search(r"(?:서브넷 마스크|Subnet Mask)[\s.]*:\s*([0-9.]+)", output, re.IGNORECASE)
+            if subnet_mask_match:
+                subnet_val = subnet_mask_match.group(1).strip()
+
         settings['ip'] = ip_match.group(1).strip() if ip_match else None
-        settings['subnet'] = subnet_match.group(1).strip() if subnet_match else None
+        settings['subnet'] = subnet_val
         settings['gateway'] = gateway_match.group(1).strip() if gateway_match else None
         settings['dns'] = [dns.strip() for dns in dns_matches] if dns_matches else []
         settings['dhcp_enabled'] = dhcp_match and dhcp_match.group(1).strip().lower() in ['yes', '예']
@@ -152,7 +165,6 @@ class SystemUtilityApp:
              self.log(f"오류: IP({settings.get('ip')}) 또는 서브넷({settings.get('subnet')})을 읽지 못했습니다."); 
              messagebox.showerror("파싱 오류", "IP 또는 서브넷 마스크를 읽어오지 못했습니다."); return
         
-        # 모든 정보가 성공적으로 읽혔을 때만 백업 파일 생성
         try:
             with open("backup_settings.txt", "w", encoding="utf-8") as f:
                 f.write(f"# {self.interface_name} 설정 백업 ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n")
