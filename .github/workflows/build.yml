@@ -1,0 +1,42 @@
+# 워크플로우 전체의 이름
+name: Build Windows Executable (Direct Install)
+
+# 실행 조건: main 브랜치에 push 될 때
+on:
+  push:
+    branches: [ "main" ]
+
+# 실행될 작업 정의
+jobs:
+  build:
+    name: Build on Windows
+    runs-on: windows-latest
+
+    steps:
+      # 1. 코드 가져오기
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 파이썬 설치
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 3. 패키지를 직접 설치 (가장 큰 변경점)
+      - name: Install dependencies directly
+        run: |
+          python -m pip install --upgrade pip
+          pip install psutil
+          pip install pyinstaller
+
+      # 4. PyInstaller 실행
+      - name: Run PyInstaller
+        run: pyinstaller --onefile my_script.pyw # 'your_script.py'는 실제 파일 이름으로 변경하세요.
+
+      # 5. 결과물 업로드
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-executable
+          path: dist/
